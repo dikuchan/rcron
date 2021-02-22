@@ -1,7 +1,7 @@
 use crate::Scheduler;
 
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{BufReader, BufWriter},
     path::Path,
 };
@@ -23,7 +23,13 @@ impl Record for Scheduler {
     }
 
     fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), RecordError> {
-        let mut file = File::open(path)?;
+        let file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path) {
+            Ok(f) => f,
+            Err(_) => File::open(path)?,
+        };
         let mut buffer = BufWriter::new(file);
 
         Ok(bincode::serialize_into(&mut buffer, self)?)
