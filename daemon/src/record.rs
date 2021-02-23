@@ -6,6 +6,8 @@ use std::{
     path::Path,
 };
 
+use chrono::Local;
+
 pub trait Record {
     fn load<P: AsRef<Path>>(path: &P) -> Result<Self, RecordError> 
         where Self: Sized;
@@ -18,21 +20,27 @@ impl Record for Scheduler {
     fn load<P: AsRef<Path>>(path: &P) -> Result<Self, RecordError> {
         let file = File::open(path)?;
         let mut buffer = BufReader::new(file);
+        let mut scheduler: Self = bincode::deserialize_from(&mut buffer)?;
+        let now = Local::now().timestamp();
 
-        Ok(bincode::deserialize_from(&mut buffer)?)
+        // Remove unnecessary tasks.
+        scheduler.retain(|&time, _| time >= now as u64);
+
+        Ok(scheduler)
     }
 
     fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), RecordError> {
         let file = match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path) {
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(path) {
             Ok(f) => f,
             Err(_) => File::open(path)?,
         };
         let mut buffer = BufWriter::new(file);
 
-        Ok(bincode::serialize_into(&mut buffer, self)?)
+        Ok(bincode::serialize_into(&mut buffer, &self)?)
     }
 }
 

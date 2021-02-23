@@ -1,4 +1,5 @@
 #![feature(map_first_last)]
+#![feature(btree_retain)]
 
 pub mod error;
 pub mod record;
@@ -21,26 +22,31 @@ use std::{
     time::Duration,
 }; 
 
+use chrono::Local;
 use common::{
     create_rcron_directory, 
-    get_socket_path, get_scheduler_path,
+    get_socket_path, get_scheduler_path, get_journal_path,
     plan::ExecutionPlan,
 };
+use log::{info, LevelFilter};
 
 type Scheduler = BTreeMap<u64, ExecutionPlan>;
 
-// TODO: Log.
 // TODO: Tests.
 
 fn schedule(receiver: Receiver<ExecutionPlan>) {
     let path = get_scheduler_path();
 
     let mut scheduler = match Scheduler::load(&path) {
-        Ok(s) => s,
+        Ok(s) => { 
+            info!("Loaded the saved state");
+            s 
+        },
         Err(_) => {
             let mut scheduler = Scheduler::new();
             // A sender is infallible (terminates with the main thread).
             let initial = receiver.recv().unwrap();
+            info!("Added task, execution in {}", initial.time);
             scheduler.insert(initial.time, initial);
 
             scheduler
@@ -48,23 +54,35 @@ fn schedule(receiver: Receiver<ExecutionPlan>) {
     };
 
     loop {
-        let (timeout, plan) = match scheduler.pop_first() {
-            Some((t, p)) => (t, p),
-            None => continue,
+        let time = match scheduler.first_entry() {
+            // Key is u64.
+            Some(e) => e.key().clone(),
+            None => {
+                let task = receiver.recv().unwrap();
+                scheduler.insert(task.time, task);
+                continue;
+            },
         };
-        let timeout = Duration::from_secs(timeout);
+        let now = Local::now().timestamp();
+        let timeout = Duration::from_secs(time - now as u64);
+                
+        scheduler.save(&path).unwrap();
 
         match receiver.recv_timeout(timeout) {
-            Ok(plan) => {
-                scheduler.insert(plan.time, plan);
+            Ok(task) => {
+                info!("Added task, execution in {}", task.time);
+                scheduler.insert(task.time, task);
             },
             Err(e) => {
                 match e {
                     RecvTimeoutError::Timeout => {
-                        Command::new(plan.command)
-                            .args(plan.args)
-                            .uid(plan.uid)
-                            .gid(plan.gid)
+                        // The entry is checked.
+                        let (_, task) = scheduler.pop_first().unwrap();
+                        info!("Started task {:?}", task);
+                        Command::new(task.command)
+                            .args(task.args)
+                            .uid(task.uid)
+                            .gid(task.gid)
                             .spawn()
                             .unwrap();
                     },
@@ -72,9 +90,6 @@ fn schedule(receiver: Receiver<ExecutionPlan>) {
                 }
             },
         }
-
-        // Save the state after an update.
-        let _ = scheduler.save(&path);
     }
 }
 
@@ -101,8 +116,8 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
                 .map_err(|e| e)
                 .and_then(|plan| Ok(sender.send(plan)))
                 .map_err(|e| e) {
-                Ok(_) => print!("Added plan: ok"),
-                Err(e) => eprintln!("Cannot add plan: {}", e),
+                Ok(_) => print!("Added task: ok"),
+                Err(e) => eprintln!("Cannot add task: {}", e),
             }
         });
     }
@@ -111,11 +126,18 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
 }
 
 fn main() {
+    let journal_path = get_journal_path();
+    let _ = simple_logging::log_to_file(journal_path, LevelFilter::Info);
+
+    info!("Daemon started");
+
     match bind()
-        .map_err(|e| e)
-        .and_then(listen)
-        .map_err(|e| e) {
+            .map_err(|e| e)
+            .and_then(listen)
+            .map_err(|e| e) {
         Ok(_) => println!("Daemon stopped: ok"),
         Err(e) => eprintln!("Cannot start daemon: {}", e),
     }
+
+    info!("Daemon stopped");
 }

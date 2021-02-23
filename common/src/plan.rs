@@ -30,9 +30,8 @@ impl ExecutionPlan {
         }
 
         let now = Local::now().timestamp();
-        let time = time - now;
 
-        if time < 1 {
+        if time - now < 1 {
             return Err(EPError::TimePassed(time));
         }
 
