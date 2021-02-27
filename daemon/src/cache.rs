@@ -8,7 +8,8 @@ use std::{
 
 use chrono::Local;
 
-pub trait Record {
+/// Allows caching.
+pub trait Cache {
     fn load<P: AsRef<Path>>(path: &P) -> Result<Self, RecordError> 
         where Self: Sized;
 
@@ -16,7 +17,7 @@ pub trait Record {
         where Self: Sized;
 }
 
-impl Record for Scheduler {
+impl Cache for Scheduler {
     fn load<P: AsRef<Path>>(path: &P) -> Result<Self, RecordError> {
         let file = File::open(path)?;
         let mut buffer = BufReader::new(file);

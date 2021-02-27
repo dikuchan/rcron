@@ -17,16 +17,18 @@ use chrono::{
 };
 use clap::Values;
 use common::{
-    get_socket_path,
-    plan::ExecutionPlan,
+    get_socket_name,
+    job::Job,
 };
 
-fn parse() -> ClientResult<ExecutionPlan> {
+/// Parses command line arguments.
+/// Returns a constructed job.
+fn parse() -> ClientResult<Job> {
     let matches = clap_app!(rcron => 
         (version: "1.0")
         (author: "Dmitry K. <dikuchan@yahoo.com>")
         (@arg COMMAND: -c --command +takes_value +required "A command to launch")
-        (@arg ARGS: -a --args +takes_value "Arguments of a script")
+        (@arg ARGS: -a --args +takes_value "Command arguments")
         (@arg TIME: -t --time +takes_value +required "Time to start an execution (YYYY.MM.DD HH:MM:SS)")
     ).get_matches();
 
@@ -43,16 +45,17 @@ fn parse() -> ClientResult<ExecutionPlan> {
         .utc_minus_local();
     let timestamp = time.timestamp() + offset as i64;
 
-    Ok(ExecutionPlan::new(command, args, timestamp)?)
+    Ok(Job::new(command, args, timestamp)?)
 }
 
-fn send(plan: ExecutionPlan) -> ClientResult<()> {
-    let socket_path = get_socket_path();
-    let socket = UnixStream::connect(socket_path)?;
+/// Sends a job through a socket to the daemon.
+fn send(job: Job) -> ClientResult<()> {
+    let socket_name = get_socket_name();
+    let socket = UnixStream::connect(socket_name)?;
 
     socket.set_passcred(true)?;
 
-    Ok(plan.send(socket)?)
+    Ok(job.send(socket)?)
 }
 
 fn main() {
