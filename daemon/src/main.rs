@@ -1,12 +1,14 @@
 #![feature(map_first_last)]
 #![feature(btree_retain)]
 
-pub mod error;
 pub mod cache;
+pub mod error;
+#[cfg(test)]
+pub mod test;
 
 use crate::{
-    error::DaemonResult,
     cache::Cache,
+    error::DaemonResult,
 };
 
 use std::{
@@ -28,12 +30,10 @@ use common::{
     get_socket_name, get_cache_name, get_journal_name,
     job::Job,
 };
-use log::{info, error, LevelFilter};
+use log::{info, warn, error, LevelFilter};
 
 type Time = u64;
 type Scheduler = BTreeMap<Time, Job>;
-
-// TODO: Tests.
 
 fn schedule(receiver: Receiver<Job>) {
     let cache_name = get_cache_name();
@@ -54,8 +54,8 @@ fn schedule(receiver: Receiver<Job>) {
             // Key is u64.
             Some(e) => e.key().clone(),
             None => {
-                let task = receiver.recv().unwrap();
-                scheduler.insert(task.time, task);
+                let job = receiver.recv().unwrap();
+                scheduler.insert(job.time, job);
                 continue;
             },
         };
@@ -72,13 +72,17 @@ fn schedule(receiver: Receiver<Job>) {
                 match e {
                     RecvTimeoutError::Timeout => {
                         // The entry is checked.
-                        let (_, task) = scheduler.pop_first().unwrap();
-                        Command::new(task.command)
-                                .args(task.args)
-                                .uid(task.uid)
-                                .gid(task.gid)
-                                .spawn()
-                                .unwrap();
+                        let (_, job) = scheduler.pop_first().unwrap();
+                        // Invalid system calls are specified in status, if any.
+                        let status = Command::new(&job.command)
+                                             .args(job.args)
+                                             .uid(job.uid)
+                                             .gid(job.gid)
+                                             .status()
+                                             .expect("failed to execute process");
+                        warn!("Process: '{}', {}", 
+                              job.command,
+                              status);
                     },
                     RecvTimeoutError::Disconnected => continue,
                 }
@@ -103,7 +107,6 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
 
     for stream in listener.incoming() {
         let stream = stream?;
-        let sender = sender.clone();
         match Job::receive(stream)
                   .map_err(|e| e)
                   .and_then(|plan| Ok(sender.send(plan)))
