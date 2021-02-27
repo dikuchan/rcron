@@ -30,7 +30,7 @@ use common::{
     get_socket_name, get_cache_name, get_journal_name,
     job::Job,
 };
-use log::{info, error, LevelFilter};
+use log::{info, warn, error, LevelFilter};
 
 type Time = u64;
 type Scheduler = BTreeMap<Time, Job>;
@@ -54,6 +54,7 @@ fn schedule(receiver: Receiver<Job>) {
             // Key is u64.
             Some(e) => e.key().clone(),
             None => {
+                // A sender is infallible.
                 let job = receiver.recv().unwrap();
                 scheduler.insert(job.time, job);
                 continue;
@@ -62,7 +63,10 @@ fn schedule(receiver: Receiver<Job>) {
         let now = Local::now().timestamp();
         let timeout = Duration::from_secs(time - now as u64);
  
-        scheduler.save(&cache_name).unwrap();
+        match scheduler.save(&cache_name) {
+            Ok(_) => {},
+            Err(e) => warn!("Cannot save state: {:?}", e),
+        };
 
         match receiver.recv_timeout(timeout) {
             Ok(job) => {

@@ -1,8 +1,8 @@
 # rcron
 
 ## Requirements
-* _Nightly Rust_
-* _UN*X_
+* Nightly Rust
+* UN*X
 
 ## Usage
 ```
