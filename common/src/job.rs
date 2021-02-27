@@ -1,5 +1,5 @@
 use crate::{
-    error::{EPError, EPResult},
+    error::{JobError, JobResult},
     geteuid, getegid
 };
 
@@ -11,7 +11,7 @@ use chrono::Local;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ExecutionPlan {
+pub struct Job {
     pub uid: u32,
     pub gid: u32,
     pub command: String,
@@ -19,20 +19,18 @@ pub struct ExecutionPlan {
     pub time: u64,
 }
 
-impl ExecutionPlan {
-    pub fn new(command: &str, args: Vec<&str>, time: i64) -> EPResult<Self> {
-        // `getuid man`: These functions are always successful.
+impl Job {
+    pub fn new(command: &str, args: Vec<&str>, time: i64) -> JobResult<Self> {
+        // `man getuid`: These functions are always successful.
         let uid = unsafe { geteuid() };
         let gid = unsafe { getegid() };
-
         if uid < 1000 || gid < 1000 {
-            return Err(EPError::AccessDenied((uid, gid)));
+            return Err(JobError::AccessDenied((uid, gid)));
         }
 
         let now = Local::now().timestamp();
-
         if time - now < 1 {
-            return Err(EPError::TimePassed(time));
+            return Err(JobError::TimePassed(time));
         }
 
         Ok(Self {
@@ -44,11 +42,11 @@ impl ExecutionPlan {
         })
     }
 
-    pub fn send(&self, stream: UnixStream) -> EPResult<()> {
+    pub fn send(&self, stream: UnixStream) -> JobResult<()> {
         Ok(bincode::serialize_into(stream, &self)?)
     }
 
-    pub fn receive(stream: UnixStream) -> EPResult<Self> {
+    pub fn receive(stream: UnixStream) -> JobResult<Self> {
         Ok(bincode::deserialize_from(stream)?)
     }
 }

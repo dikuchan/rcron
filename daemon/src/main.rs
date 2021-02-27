@@ -2,11 +2,11 @@
 #![feature(btree_retain)]
 
 pub mod error;
-pub mod record;
+pub mod cache;
 
 use crate::{
     error::DaemonResult,
-    record::Record,
+    cache::Cache,
 };
 
 use std::{
@@ -24,31 +24,27 @@ use std::{
 
 use chrono::Local;
 use common::{
-    create_rcron_directory, 
-    get_socket_path, get_scheduler_path, get_journal_path,
-    plan::ExecutionPlan,
+    create_socket_dir,
+    get_socket_name, get_cache_name, get_journal_name,
+    job::Job,
 };
-use log::{info, LevelFilter};
+use log::{info, error, LevelFilter};
 
-type Scheduler = BTreeMap<u64, ExecutionPlan>;
+type Time = u64;
+type Scheduler = BTreeMap<Time, Job>;
 
 // TODO: Tests.
 
-fn schedule(receiver: Receiver<ExecutionPlan>) {
-    let path = get_scheduler_path();
+fn schedule(receiver: Receiver<Job>) {
+    let cache_name = get_cache_name();
 
-    let mut scheduler = match Scheduler::load(&path) {
-        Ok(s) => { 
-            info!("Loaded the saved state");
-            s 
-        },
+    let mut scheduler = match Scheduler::load(&cache_name) {
+        Ok(s) => s,
         Err(_) => {
             let mut scheduler = Scheduler::new();
             // A sender is infallible (terminates with the main thread).
-            let initial = receiver.recv().unwrap();
-            info!("Added task, execution in {}", initial.time);
-            scheduler.insert(initial.time, initial);
-
+            let job = receiver.recv().unwrap();
+            scheduler.insert(job.time, job);
             scheduler
         }
     };
@@ -65,26 +61,24 @@ fn schedule(receiver: Receiver<ExecutionPlan>) {
         };
         let now = Local::now().timestamp();
         let timeout = Duration::from_secs(time - now as u64);
-                
-        scheduler.save(&path).unwrap();
+ 
+        scheduler.save(&cache_name).unwrap();
 
         match receiver.recv_timeout(timeout) {
-            Ok(task) => {
-                info!("Added task, execution in {}", task.time);
-                scheduler.insert(task.time, task);
+            Ok(job) => {
+                scheduler.insert(job.time, job);
             },
             Err(e) => {
                 match e {
                     RecvTimeoutError::Timeout => {
                         // The entry is checked.
                         let (_, task) = scheduler.pop_first().unwrap();
-                        info!("Started task {:?}", task);
                         Command::new(task.command)
-                            .args(task.args)
-                            .uid(task.uid)
-                            .gid(task.gid)
-                            .spawn()
-                            .unwrap();
+                                .args(task.args)
+                                .uid(task.uid)
+                                .gid(task.gid)
+                                .spawn()
+                                .unwrap();
                     },
                     RecvTimeoutError::Disconnected => continue,
                 }
@@ -94,12 +88,12 @@ fn schedule(receiver: Receiver<ExecutionPlan>) {
 }
 
 fn bind() -> DaemonResult<UnixListener> {
-    let socket_path = get_socket_path();
+    let socket_name = get_socket_name();
     
-    create_rcron_directory()?;
-    let _ = fs::remove_file(&socket_path);
+    create_socket_dir()?;
+    let _ = fs::remove_file(&socket_name);
 
-    Ok(UnixListener::bind(&socket_path)?)
+    Ok(UnixListener::bind(&socket_name)?)
 }
 
 fn listen(listener: UnixListener) -> DaemonResult<()> {
@@ -110,33 +104,30 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
     for stream in listener.incoming() {
         let stream = stream?;
         let sender = sender.clone();
-
-        thread::spawn(move || {
-            match ExecutionPlan::receive(stream)
-                .map_err(|e| e)
-                .and_then(|plan| Ok(sender.send(plan)))
-                .map_err(|e| e) {
-                Ok(_) => print!("Added task: ok"),
-                Err(e) => eprintln!("Cannot add task: {}", e),
-            }
-        });
+        match Job::receive(stream)
+                  .map_err(|e| e)
+                  .and_then(|plan| Ok(sender.send(plan)))
+                  .map_err(|e| e) {
+            Ok(_) => info!("Added task"),
+            Err(e) => error!("Cannot add task: {}", e),
+        };
     }
 
     Ok(())
 }
 
 fn main() {
-    let journal_path = get_journal_path();
-    let _ = simple_logging::log_to_file(journal_path, LevelFilter::Info);
+    let journal_name = get_journal_name();
+    let _ = simple_logging::log_to_file(journal_name, LevelFilter::Info);
 
     info!("Daemon started");
 
     match bind()
-            .map_err(|e| e)
-            .and_then(listen)
-            .map_err(|e| e) {
-        Ok(_) => println!("Daemon stopped: ok"),
-        Err(e) => eprintln!("Cannot start daemon: {}", e),
+         .map_err(|e| e)
+         .and_then(listen)
+         .map_err(|e| e) {
+        Ok(_) => {},
+        Err(e) => error!("Cannot start daemon: {}", e),
     }
 
     info!("Daemon stopped");
