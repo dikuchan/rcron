@@ -30,7 +30,7 @@ use common::{
     get_socket_name, get_cache_name, get_journal_name,
     job::Job,
 };
-use log::{info, warn, error, LevelFilter};
+use log::{info, error, LevelFilter};
 
 type Time = u64;
 type Scheduler = BTreeMap<Time, Job>;
@@ -73,16 +73,16 @@ fn schedule(receiver: Receiver<Job>) {
                     RecvTimeoutError::Timeout => {
                         // The entry is checked.
                         let (_, job) = scheduler.pop_first().unwrap();
+                        thread::spawn(move || {
                         // Invalid system calls are specified in status, if any.
-                        let status = Command::new(&job.command)
-                                             .args(job.args)
-                                             .uid(job.uid)
-                                             .gid(job.gid)
-                                             .status()
-                                             .expect("failed to execute process");
-                        warn!("Process: '{}', {}", 
-                              job.command,
-                              status);
+                            let status = Command::new(&job.command)
+                                                 .args(job.args)
+                                                 .uid(job.uid)
+                                                 .gid(job.gid)
+                                                 .status()
+                                                 .expect("failed to execute process");
+                            info!("Process: '{}', {}", job.command, status);
+                        });
                     },
                     RecvTimeoutError::Disconnected => continue,
                 }
@@ -107,6 +107,7 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
 
     for stream in listener.incoming() {
         let stream = stream?;
+        // Better to receive as-is than spawn a process.
         match Job::receive(stream)
                   .map_err(|e| e)
                   .and_then(|plan| Ok(sender.send(plan)))
