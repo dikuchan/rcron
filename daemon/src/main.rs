@@ -1,5 +1,6 @@
 #![feature(map_first_last)]
 #![feature(btree_retain)]
+#![feature(peer_credentials_unix_socket)]
 
 pub mod cache;
 pub mod error;
@@ -15,7 +16,8 @@ use std::{
     collections::BTreeMap,
     fs,
     os::unix::{
-        net::UnixListener,
+        net::{UCred, UnixListener},
+        fs::PermissionsExt,
         process::CommandExt,
     },
     process::Command,
@@ -28,14 +30,14 @@ use chrono::Local;
 use common::{
     create_socket_dir,
     get_socket_name, get_cache_name, get_journal_name,
-    job::Job,
+    job::{Job, JobWithCredentials},
 };
 use log::{info, warn, error, LevelFilter};
 
 type Time = u64;
-type Scheduler = BTreeMap<Time, Job>;
+type Scheduler = BTreeMap<Time, JobWithCredentials>;
 
-fn schedule(receiver: Receiver<Job>) {
+fn schedule(receiver: Receiver<JobWithCredentials>) {
     let cache_name = get_cache_name();
 
     let mut scheduler = match Scheduler::load(&cache_name) {
@@ -107,14 +109,28 @@ fn bind() -> DaemonResult<UnixListener> {
 fn listen(listener: UnixListener) -> DaemonResult<()> {
     let (sender, receiver) = mpsc::channel();
 
+    let socket_name = get_socket_name();
+    fs::set_permissions(&socket_name, fs::Permissions::from_mode(0o777))?;
+
     thread::spawn(move || schedule(receiver));
 
     for stream in listener.incoming() {
         let stream = stream?;
+        let UCred { uid, gid, .. } = stream.peer_cred()?;
         // Better to receive as-is than spawn a process.
         match Job::receive(stream)
                   .map_err(|e| e)
-                  .and_then(|plan| Ok(sender.send(plan)))
+                  .and_then(|job| {
+                      // Rebuild `Job` with credentials included.
+                      let message = JobWithCredentials { 
+                          uid, 
+                          gid, 
+                          command: job.command,
+                          args: job.args,
+                          time: job.time,
+                      };
+                      Ok(sender.send(message))
+                  })
                   .map_err(|e| e) {
             Ok(_) => info!("Added task"),
             Err(e) => error!("Cannot add task: {}", e),

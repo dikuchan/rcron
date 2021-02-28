@@ -1,5 +1,3 @@
-#![feature(unix_socket_ancillary_data)]
-
 #[macro_use]
 extern crate clap;
 
@@ -52,8 +50,6 @@ fn parse() -> ClientResult<Job> {
 fn send(job: Job) -> ClientResult<()> {
     let socket_name = get_socket_name();
     let socket = UnixStream::connect(socket_name)?;
-
-    socket.set_passcred(true)?;
 
     Ok(job.send(socket)?)
 }

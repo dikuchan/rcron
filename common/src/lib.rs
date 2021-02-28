@@ -6,25 +6,16 @@ use std::{
     path::PathBuf,
 };
 
-use home::home_dir;
-
+pub static SOCKET_PATH: &'_ str = "/var/run";
 pub static CACHE_PATH: &'_ str = "/var/cache";
 pub static LOG_PATH: &'_ str = "/var/log";
-pub static SOCKET_PATH: &'_ str = "/run/rcron";
 pub static SOCKET_NAME: &'_ str = "rcron-socket";
 
 fn get_socket_dir() -> PathBuf {
-    match home_dir() {
-        Some(mut path) => {
-            if unsafe { geteuid() } == 0 { 
-                path = PathBuf::from(SOCKET_PATH);
-                return path;
-            }
-            path.push(".rcron");
-            path
-        },
-        None => PathBuf::from(SOCKET_PATH)
-    }
+    let mut path = PathBuf::from(SOCKET_PATH);
+    path.push("rcron");
+
+    path
 }
 
 pub fn create_socket_dir() -> std::io::Result<()> {
@@ -37,24 +28,12 @@ pub fn get_socket_name() -> PathBuf {
     let mut path = get_socket_dir();
     path.push(SOCKET_NAME);
     path.set_extension("sock");
-
+    
     path
 }
 
-/// Tries to use a directory at `$HOME`.
-/// If fails, uses `/var`.
 pub fn get_cache_name() -> PathBuf {
-    let mut path = match home_dir() {
-        Some(mut path) => {
-            if unsafe { geteuid() } == 0 { 
-                PathBuf::from(CACHE_PATH)
-            } else {
-                path.push(".cache");
-                path
-            }
-        },
-        None => PathBuf::from(CACHE_PATH)
-    };
+    let mut path = PathBuf::from(CACHE_PATH);
     path.push("rcron");
     path.set_extension("bin");
 
@@ -62,11 +41,20 @@ pub fn get_cache_name() -> PathBuf {
 }
 
 pub fn get_journal_name() -> PathBuf {
-    let mut path = get_socket_dir();
+    let mut path = PathBuf::from(LOG_PATH);
     path.push("rcron");
     path.set_extension("log");
 
     path
+}
+
+// `man getuid`: These functions are always successful.
+pub fn get_uid() -> u32 {
+    unsafe { geteuid() }
+}
+
+pub fn get_gid() -> u32 {
+    unsafe { getegid() }
 }
 
 #[link(name = "c")]
