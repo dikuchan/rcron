@@ -115,8 +115,15 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
     thread::spawn(move || schedule(receiver));
 
     for stream in listener.incoming() {
+        // `Rust doc`: Never returns `None`.
         let stream = stream?;
-        let UCred { uid, gid, .. } = stream.peer_cred()?;
+        let UCred { uid, gid, .. } = match stream.peer_cred() {
+            Ok(credentials) => credentials,
+            Err(e) => {
+                warn!("Cannot get credentials: {}", e);
+                continue;
+            },
+        };
         // Better to receive as-is than spawn a process.
         match Job::receive(stream)
                   .map_err(|e| e)
