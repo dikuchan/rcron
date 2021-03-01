@@ -81,7 +81,9 @@ fn schedule(receiver: Receiver<JobWithCredentials>) {
                         let (_, job) = scheduler.pop_first().unwrap();
                         thread::spawn(move || {
                         // Invalid system calls are specified in status, if any.
-                            let status = Command::new(&job.command)
+                            let status = Command::new("sh")
+                                                 .arg("-c")
+                                                 .arg(&job.command)
                                                  .args(job.args)
                                                  .uid(job.uid)
                                                  .gid(job.gid)
@@ -110,7 +112,7 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
     let (sender, receiver) = mpsc::channel();
 
     let socket_name = get_socket_name();
-    fs::set_permissions(&socket_name, fs::Permissions::from_mode(0o777))?;
+    fs::set_permissions(&socket_name, fs::Permissions::from_mode(0o666))?;
 
     thread::spawn(move || schedule(receiver));
 
@@ -124,6 +126,7 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
                 continue;
             },
         };
+        let mut command = String::default();
         // Better to receive as-is than spawn a process.
         match Job::receive(stream)
                   .map_err(|e| e)
@@ -136,11 +139,12 @@ fn listen(listener: UnixListener) -> DaemonResult<()> {
                           args: job.args,
                           time: job.time,
                       };
+                      command = message.command.clone();
                       Ok(sender.send(message))
                   })
                   .map_err(|e| e) {
-            Ok(_) => info!("Added task"),
-            Err(e) => error!("Cannot add task: {}", e),
+            Ok(_) => info!("Added job '{}'", command),
+            Err(e) => error!("Cannot add job: {}", e),
         };
     }
 
@@ -151,14 +155,14 @@ fn main() {
     let journal_name = get_journal_name();
     let _ = simple_logging::log_to_file(journal_name, LevelFilter::Info);
 
-    info!("Daemon started");
+    info!("Daemon launched");
 
     match bind()
          .map_err(|e| e)
          .and_then(listen)
          .map_err(|e| e) {
         Ok(_) => {},
-        Err(e) => error!("Cannot start daemon: {}", e),
+        Err(e) => println!("Cannot start daemon: {}", e),
     }
 
     info!("Daemon stopped");
