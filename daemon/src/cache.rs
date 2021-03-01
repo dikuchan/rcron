@@ -10,15 +10,15 @@ use chrono::Local;
 
 /// Allows caching.
 pub trait Cache {
-    fn load<P: AsRef<Path>>(path: &P) -> Result<Self, RecordError> 
+    fn load<P: AsRef<Path>>(path: &P) -> Result<Self, CacheError> 
         where Self: Sized;
 
-    fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), RecordError> 
+    fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), CacheError> 
         where Self: Sized;
 }
 
 impl Cache for Scheduler {
-    fn load<P: AsRef<Path>>(path: &P) -> Result<Self, RecordError> {
+    fn load<P: AsRef<Path>>(path: &P) -> Result<Self, CacheError> {
         let file = File::open(path)?;
         let mut buffer = BufReader::new(file);
         let mut scheduler: Self = bincode::deserialize_from(&mut buffer)?;
@@ -30,7 +30,7 @@ impl Cache for Scheduler {
         Ok(scheduler)
     }
 
-    fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), RecordError> {
+    fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), CacheError> {
         let file = match OpenOptions::new()
                 .create(true)
                 .truncate(true)
@@ -46,15 +46,15 @@ impl Cache for Scheduler {
 }
 
 #[derive(Debug)]
-pub struct RecordError(String);
+pub struct CacheError(String);
 
-impl From<bincode::Error> for RecordError {
+impl From<bincode::Error> for CacheError {
     fn from(e: bincode::Error) -> Self {
         Self(e.to_string())
     }
 }
 
-impl From<std::io::Error> for RecordError {
+impl From<std::io::Error> for CacheError {
     fn from(e: std::io::Error) -> Self {
         Self(e.to_string())
     }
