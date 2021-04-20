@@ -2,7 +2,7 @@ use std::fmt;
 
 use common::error::JobError;
 
-pub type ClientResult<T> = Result<T, ClientError>; 
+pub type ClientResult<T> = Result<T, ClientError>;
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -41,11 +41,13 @@ impl From<std::io::Error> for ClientError {
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            Self::AccessDenied((uid, gid)) => 
-                write!(f, "only non-system users are allowed ({}>999, {}>999)", uid, gid),
+            Self::AccessDenied((uid, gid)) => write!(
+                f,
+                "only non-system users are allowed ({}>999, {}>999)",
+                uid, gid
+            ),
             Self::InvalidTimeParse(message) => write!(f, "{}", message),
-            Self::TimePassed(time) => 
-                write!(f, "time has already passed ({}s)", -time),
+            Self::TimePassed(time) => write!(f, "time has already passed ({}s)", -time),
             Self::TransferAborted(message) => write!(f, "{}", message),
         }
     }

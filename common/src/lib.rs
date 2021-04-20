@@ -1,10 +1,7 @@
 pub mod error;
 pub mod job;
 
-use std::{
-    fs::create_dir_all,
-    path::PathBuf,
-};
+use std::{fs::create_dir_all, path::PathBuf};
 
 pub static SOCKET_PATH: &'_ str = "/var/run";
 pub static CACHE_PATH: &'_ str = "/var/cache";
@@ -28,7 +25,7 @@ pub fn get_socket_name() -> PathBuf {
     let mut path = get_socket_dir();
     path.push(SOCKET_NAME);
     path.set_extension("sock");
-    
+
     path
 }
 

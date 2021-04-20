@@ -10,11 +10,13 @@ use chrono::Local;
 
 /// Allows caching.
 pub trait Cache {
-    fn load<P: AsRef<Path>>(path: &P) -> Result<Self, CacheError> 
-        where Self: Sized;
+    fn load<P: AsRef<Path>>(path: &P) -> Result<Self, CacheError>
+    where
+        Self: Sized;
 
-    fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), CacheError> 
-        where Self: Sized;
+    fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), CacheError>
+    where
+        Self: Sized;
 }
 
 impl Cache for Scheduler {
@@ -32,10 +34,11 @@ impl Cache for Scheduler {
 
     fn save<P: AsRef<Path>>(&self, path: &P) -> Result<(), CacheError> {
         let file = match OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(path) {
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(path)
+        {
             Ok(f) => f,
             Err(_) => File::open(path)?,
         };

@@ -1,14 +1,12 @@
 use crate::{
-    get_uid, get_gid,
     error::{JobError, JobResult},
+    get_gid, get_uid,
 };
 
-use std::{
-    os::unix::net::UnixStream,
-};
+use std::os::unix::net::UnixStream;
 
 use chrono::Local;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Job {
@@ -54,4 +52,3 @@ impl Job {
         Ok(bincode::deserialize_from(stream)?)
     }
 }
-

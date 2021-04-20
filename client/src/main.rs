@@ -5,19 +5,14 @@ pub mod error;
 
 use crate::error::ClientResult;
 
-use std::{
-    os::unix::net::UnixStream,
-};
+use std::os::unix::net::UnixStream;
 
 use chrono::{
-    offset::{Offset, TimeZone}, 
+    offset::{Offset, TimeZone},
     Local, NaiveDateTime,
 };
 use clap::Values;
-use common::{
-    get_socket_name,
-    job::Job,
-};
+use common::{get_socket_name, job::Job};
 
 /// Parses command line arguments.
 /// Returns a constructed job.
@@ -32,15 +27,15 @@ fn parse() -> ClientResult<Job> {
 
     // Fails only on the `clap` level.
     let command = matches.value_of("COMMAND").unwrap();
-    let args = matches.values_of("ARGS").unwrap_or(Values::default()).collect();
+    let args = matches
+        .values_of("ARGS")
+        .unwrap_or(Values::default())
+        .collect();
     let time = matches.value_of("TIME").unwrap();
 
     // Convert local time to UTC.
     let time = NaiveDateTime::parse_from_str(time, "%Y.%m.%d %H:%M:%S")?;
-    let offset = Local.timestamp(0, 0)
-        .offset()
-        .fix()
-        .utc_minus_local();
+    let offset = Local.timestamp(0, 0).offset().fix().utc_minus_local();
     let timestamp = time.timestamp() + offset as i64;
 
     Ok(Job::new(command, args, timestamp)?)
@@ -55,11 +50,8 @@ fn send(job: Job) -> ClientResult<()> {
 }
 
 fn main() {
-    match parse()
-        .map_err(|e| e)
-        .and_then(send)
-        .map_err(|e| e) {
+    match parse().map_err(|e| e).and_then(send).map_err(|e| e) {
         Ok(_) => println!("Scheduled: ok"),
-        Err(e) => println!("Cannot schedule: {}", e)
+        Err(e) => println!("Cannot schedule: {}", e),
     }
 }
